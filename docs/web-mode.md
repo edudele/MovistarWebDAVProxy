@@ -89,6 +89,7 @@ papelera.
 |---|---|---|
 | `WEB_SESSION` | `false` (`true` en `Dockerfile.web`) | Activa el modo web. |
 | `WEB_PROVIDER` | `movistar` | `movistar` o `o2`: a qué web se conecta el modo web. |
+| `WEB_SESSION_WARN_BEFORE` | `2h` | Margen del aviso por Telegram antes de que caduque la sesión web cuando **no** hay renovación automática (inicio de sesión sin «No cerrar sesión», p. ej. por SMS). Con renovación activa solo avisa si, a falta de 30 min, no se ha renovado. Un aviso por caducidad. |
 | `CHROME_PATH` | autodetectar (`/usr/bin/chromium` en la imagen) | Ejecutable de Chromium/Chrome. |
 | `CHROME_NO_SANDBOX` | `false` (`true` en la imagen) | Lanza Chromium sin sandbox (necesario como root en contenedores). |
 | `WEB_SESSION_RENEW_BEFORE` | `1h` | Margen antes de la caducidad de 24 h para renovar la sesión. |

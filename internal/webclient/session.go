@@ -84,6 +84,12 @@ type Session struct {
 	renewMu      sync.RWMutex
 	lastRenewAt  time.Time
 	lastRenewTry time.Time
+
+	// Aviso previo a la caducidad (ver expiry.go); protegido por stateMu.
+	onExpiring     func(expires time.Time, left time.Duration, autoRenewal bool)
+	warnedFor      time.Time // caducidad ya avisada
+	loggedExpires  time.Time // última caducidad escrita en el log
+	loggedRemember bool
 }
 
 // Response es la respuesta de una llamada a SAPI hecha desde la pestaña.

@@ -110,6 +110,7 @@ func (s *Session) renewLoop() {
 		if err != nil {
 			continue
 		}
+		s.reportExpiry(time.Now(), expires, remember)
 		s.stateMu.RLock()
 		lastTry := s.lastRenewTry
 		s.stateMu.RUnlock()

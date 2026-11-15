@@ -159,6 +159,28 @@ func (t *TelegramNotifier) SendSessionExpiredAlert(provider, phone, details stri
 	return t.SendMessage(msg)
 }
 
+// SendSessionExpiringAlert avisa de que la sesión web está a punto de caducar. La
+// deduplicación (un aviso por caducidad) la hace quien llama.
+func (t *TelegramNotifier) SendSessionExpiringAlert(provider string, expires time.Time, left time.Duration, autoRenewal bool) error {
+	providerName := "Movistar Cloud"
+	if strings.EqualFold(provider, "o2") {
+		providerName = "O2 Cloud"
+	}
+	action := "No hay renovación automática: abre el panel Web, entra en la pantalla de inicio de sesión " +
+		"y vuelve a iniciar sesión antes de esa hora para que el servicio no se corte."
+	if autoRenewal {
+		action = "La renovación automática estaba activa pero no ha conseguido una sesión nueva. " +
+			"Abre el panel Web y vuelve a iniciar sesión para evitar el corte."
+	}
+	msg := fmt.Sprintf(
+		"⏳ *Sesión de %s a punto de caducar*\n\n"+
+			"La sesión web del Proxy WebDAV caduca a las *%s* (en %s).\n\n"+
+			"%s",
+		providerName, expires.Local().Format("02/01 15:04"), left.Round(time.Minute), action,
+	)
+	return t.SendMessage(msg)
+}
+
 func (t *TelegramNotifier) SendSessionRecoveredAlert(provider, phone string, downtime time.Duration) error {
 	t.mu.Lock()
 	// Permitir que un nuevo incidente vuelva a notificarse de inmediato.

@@ -85,6 +85,21 @@ func (s *Server) SetWebSessionStatus(f func() map[string]interface{}) {
 	s.webStatus = f
 }
 
+// NotifySessionExpiring envía por Telegram el aviso previo a la caducidad de la
+// sesión web, si hay Telegram configurado.
+func (s *Server) NotifySessionExpiring(expires time.Time, left time.Duration, autoRenewal bool) {
+	if s.notifier == nil || !s.notifier.IsConfigured() {
+		return
+	}
+	provider := ""
+	if s.client != nil {
+		provider = s.client.GetConfig().Provider
+	}
+	if err := s.notifier.SendSessionExpiringAlert(provider, expires, left, autoRenewal); err != nil {
+		logger.Log("[Telegram] ⚠️ No se pudo enviar el aviso de caducidad próxima: %v", err)
+	}
+}
+
 // SetWebLogin publica en /web-login/ la vista remota para iniciar sesión en la web
 // de Movistar Cloud (modo web). Queda detrás de la autenticación del panel.
 func (s *Server) SetWebLogin(h http.Handler) {

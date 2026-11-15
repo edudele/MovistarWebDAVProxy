@@ -200,6 +200,7 @@ func main() {
 		acct := &accountState{}
 		go runWebHousekeeping(ctx, client, webSess.LoggedIn, acct)
 		uiServer.SetWebSessionStatus(func() map[string]interface{} { return acct.status(webSess.Status()) })
+		webSess.SetExpiryWarning(uiServer.NotifySessionExpiring)
 	}
 	webPort := "5000"
 	if p := strings.TrimSpace(os.Getenv("PORT")); p != "" {
