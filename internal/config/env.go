@@ -15,10 +15,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"movistar-webdav-proxy/internal/logger"
 )
 
 const (
-	Version          = "v2.4.4"
+	Version          = "v2.4.5"
 	encryptedPrefix  = "enc:v1:"
 	tokensEncryptEnv = "TOKENS_ENCRYPTION_KEY"
 )
@@ -317,11 +319,16 @@ func SaveAccountConfig(cfg AccountConfig) error {
 	fileLock.Lock()
 	defer fileLock.Unlock()
 
+	// Un valor de Telegram mal formado NO debe impedir guardar los tokens
+	// OAuth: con rotación de refresh_token, no persistirlos supone perder la
+	// vinculación en el siguiente reinicio. Se descarta solo el campo inválido.
 	if !ValidateBotToken(cfg.TelegramBotToken) {
-		return fmt.Errorf("formato de token de Telegram inválido")
+		logger.Log("[Config] ⚠️ Token de Telegram con formato inválido: se omite al guardar (los tokens de la cuenta sí se guardan).")
+		cfg.TelegramBotToken = ""
 	}
 	if !ValidateChatID(cfg.TelegramChatID) {
-		return fmt.Errorf("formato de Chat ID de Telegram inválido")
+		logger.Log("[Config] ⚠️ Chat ID de Telegram con formato inválido: se omite al guardar (los tokens de la cuenta sí se guardan).")
+		cfg.TelegramChatID = ""
 	}
 
 	if err := os.MkdirAll(TokensDir, 0700); err != nil {
@@ -413,7 +420,8 @@ func SaveAccountConfig(cfg AccountConfig) error {
 	}
 
 	tmpPath := fmt.Sprintf("%s.tmp.%d", target, os.Getpid())
-	if err := os.WriteFile(tmpPath, []byte(content), 0600); err != nil {
+	if err := writeFileSync(tmpPath, []byte(content), 0600); err != nil {
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	if err := os.Rename(tmpPath, target); err != nil {
@@ -427,12 +435,43 @@ func SaveAccountConfig(cfg AccountConfig) error {
 		}
 	}
 
+	syncDir(TokensDir)
+
 	// Si guardamos en account_<phone>.env, eliminar el .env duplicado legacy para mantener un único fichero por cuenta
 	if phoneClean != "" {
 		_ = os.Remove(filepath.Join(TokensDir, ".env"))
 	}
 
 	return nil
+}
+
+// writeFileSync escribe y hace fsync antes de cerrar, para que un corte de
+// luz o un "docker kill" justo tras rotar el refresh_token no deje el fichero
+// vacío o con el token anterior.
+func writeFileSync(path string, data []byte, perm os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// syncDir persiste la entrada de directorio tras un rename (best effort).
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }
 
 func DeleteAccountConfig(phone string) error {

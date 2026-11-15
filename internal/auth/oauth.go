@@ -180,6 +180,53 @@ func GetUploadBaseURL(provider string) string {
 	return "https://upload.micloud.movistar.es"
 }
 
+// OAuthError describe una respuesta de error del endpoint de tokens
+// (RFC 6749 §5.2). Distinguir el campo "error" es imprescindible: un
+// refresh_token revocado o caducado se señala con 400 "invalid_grant",
+// mientras que un 401 suele corresponder a "invalid_client" u otros fallos
+// del gateway que no implican que la vinculación del dispositivo esté perdida.
+type OAuthError struct {
+	Op          string
+	StatusCode  int
+	Code        string
+	Description string
+}
+
+func (e *OAuthError) Error() string {
+	msg := fmt.Sprintf("OAuth %s failed (HTTP %d)", e.Op, e.StatusCode)
+	if e.Code != "" {
+		msg += ": " + e.Code
+	}
+	if e.Description != "" {
+		msg += " (" + e.Description + ")"
+	}
+	return msg
+}
+
+// IsInvalidGrant indica si el servidor ha rechazado explícitamente el grant
+// (refresh_token inválido, caducado o revocado).
+func IsInvalidGrant(err error) bool {
+	var oe *OAuthError
+	return errors.As(err, &oe) && strings.EqualFold(oe.Code, "invalid_grant")
+}
+
+func newOAuthError(op string, statusCode int, body []byte, secrets ...string) *OAuthError {
+	oe := &OAuthError{Op: op, StatusCode: statusCode}
+	var payload struct {
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}
+	if err := json.Unmarshal(body, &payload); err == nil {
+		oe.Code = strings.TrimSpace(payload.Error)
+		desc := summarizeSAPILoginBody([]byte(payload.ErrorDescription), secrets...)
+		if len(desc) > 160 {
+			desc = desc[:160] + "…"
+		}
+		oe.Description = desc
+	}
+	return oe
+}
+
 type OAuthTokens struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -388,7 +435,7 @@ func ExchangeCodeForTokens(code, verifier, provider string) (*OAuthTokens, error
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OAuth token exchange failed (HTTP %d)", resp.StatusCode)
+		return nil, newOAuthError("token exchange", resp.StatusCode, bodyBytes, code, verifier)
 	}
 
 	var tokens OAuthTokens
@@ -431,7 +478,7 @@ func RefreshOAuthToken(refreshToken, provider string) (*OAuthTokens, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OAuth token refresh failed (HTTP %d)", resp.StatusCode)
+		return nil, newOAuthError("token refresh", resp.StatusCode, bodyBytes, refreshToken)
 	}
 
 	var tokens OAuthTokens

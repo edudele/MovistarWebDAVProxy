@@ -110,3 +110,30 @@ func TestSAPIUserAgentUsesEdgeBrowserProfile(t *testing.T) {
 		t.Fatalf("GetSAPIUserAgent() = %q, want Edge profile", got)
 	}
 }
+
+func TestNewOAuthErrorParsesRFC6749Body(t *testing.T) {
+	body := []byte(`{"error":"invalid_grant","error_description":"refresh token SECRET-REFRESH-123 expired"}`)
+	err := newOAuthError("token refresh", 400, body, "SECRET-REFRESH-123")
+	if err.Code != "invalid_grant" || err.StatusCode != 400 {
+		t.Fatalf("unexpected parsed error: %+v", err)
+	}
+	if !IsInvalidGrant(err) {
+		t.Fatal("IsInvalidGrant must detect invalid_grant")
+	}
+	if strings.Contains(err.Error(), "SECRET-REFRESH-123") {
+		t.Fatalf("error message must not leak the refresh token: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "OAuth token refresh failed (HTTP 400): invalid_grant") {
+		t.Fatalf("unexpected error message: %q", err.Error())
+	}
+}
+
+func TestNewOAuthErrorNonJSONBody(t *testing.T) {
+	err := newOAuthError("token refresh", 401, []byte("<html>Unauthorized</html>"))
+	if err.Code != "" || IsInvalidGrant(err) {
+		t.Fatalf("non-JSON body must not be treated as invalid_grant: %+v", err)
+	}
+	if err.Error() != "OAuth token refresh failed (HTTP 401)" {
+		t.Fatalf("unexpected message: %q", err.Error())
+	}
+}

@@ -10,6 +10,9 @@ permissions:
 
 jobs:
   build-and-push:
+    # Solo en el repositorio original: los forks no tienen los secretos de Docker Hub
+    # (el fork publica en GHCR con ghcr-publish.yml).
+    if: github.repository == 'uniextra/MovistarWebDAVProxy'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
