@@ -2,6 +2,25 @@
 
 Todos los cambios notables en **Movistar / O2 Cloud WebDAV Proxy** se documentan en este archivo.
 
+## [v2.4.5] - 2026-11-15
+
+### 🔐 La vinculación con Movistar / O2 ya no se pierde por un único 401
+- **Síntoma (O2):** `OAuth token refresh failed (HTTP 401)` al primer intento → `Pausando reintentos automáticos hasta revinculación`, aunque un segundo después SAPI seguía entregando credenciales rotadas. La sesión quedaba bloqueada hasta repetir el SMS.
+- **Clasificación de errores según RFC 6749 §5.2:** el canje de `refresh_token` lee el campo `error` de la respuesta. Solo `invalid_grant` se considera revocación; un 401 genérico (`invalid_client`, gateway) ya no es terminal y no se reintenta en bucle.
+- **Comprobación real antes de rendirse:** si apiseg rechaza el `refresh_token`, o si `/sapi/login/oauth` devuelve 401 tras un canje correcto, se verifica la sesión con una petición SAPI real (cuota). Si funciona, se conserva la vinculación. La vinculación inicial ya no usa `/sapi/login/oauth`, así que no se descartan tokens recién emitidos por culpa de ese endpoint.
+- **Recuperación automática:** una sesión marcada como expirada ya no queda bloqueada para siempre. KeepAlive reintenta recuperarla (recargando también los tokens de disco) a los 5 min, 15 min, 30 min, 1 h, 2 h, 4 h y después cada 6 h. Cualquier respuesta 2xx de SAPI la reactiva. Desactivable con `SESSION_AUTO_RECOVERY=false`.
+
+### 🔁 Rotación de tokens (RFC 6749 §6) sin pérdidas
+- Los tokens rotados que llegan en la cabecera `Authorization` de una respuesta **de error** de `/sapi/login/oauth` se guardan y se usan en el canje, en lugar de descartarse.
+- El canje relee el `refresh_token` más reciente en cada intento.
+- Los reintentos por 429/503/408 presentan las credenciales vigentes y no las de la petición original.
+- Los errores al guardar credenciales ya no se ignoran: se registran y se reintenta. El fichero se escribe con `fsync` antes del `rename`.
+- Un token o Chat ID de Telegram con formato inválido ya no impide guardar los tokens OAuth (solo se descarta ese campo).
+
+### 🔔 Alertas y diagnóstico
+- **Telegram activo desde el arranque:** antes las credenciales solo se cargaban al abrir el panel, así que tras reiniciar el contenedor nunca llegaba la alerta de sesión caducada. Se envía una única alerta por incidente y un aviso nuevo de **sesión recuperada**.
+- **Log persistente con rotación** en `/app/tokens/logs/proxy.log` (`LOG_FILE`, `LOG_FILE_MAX_MB`, `LOG_FILE_BACKUPS`), con fecha completa, para conservar el historial aunque se recree el contenedor.
+
 ## [v2.4.4] - 2026-11-14
 
 ### 🛠️ Synology Hyper Backup: Auto-healing de `Control/@writer` y carpetas reales

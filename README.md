@@ -152,6 +152,10 @@ docker run -d \
 | `WEBDAV_HOST_PORT` | `5050` | Puerto público de WebDAV que se muestra en el panel; en Compose se toma de `WEBDAV_PORT`. |
 | `TELEGRAM_BOT_TOKEN` | *(vacío)* | Token del bot de Telegram para alertas de sesión. |
 | `TELEGRAM_CHAT_ID` | *(vacío)* | Chat o canal de Telegram que recibirá las alertas. |
+| `SESSION_AUTO_RECOVERY` | `true` | Si la sesión de Movistar/O2 se marca como expirada, reintenta recuperarla sola (5 min, 15 min, 30 min, 1 h, 2 h, 4 h y luego cada 6 h) antes de exigir revincular por SMS. `false` para desactivarlo. |
+| `LOG_FILE` | `/app/tokens/logs/proxy.log` | Log persistente con rotación (sobrevive a recrear el contenedor). `off` para desactivarlo. |
+| `LOG_FILE_MAX_MB` | `5` | Tamaño máximo de cada fichero de log antes de rotar. |
+| `LOG_FILE_BACKUPS` | `3` | Número de ficheros rotados que se conservan (`proxy.log.1` ... `.N`). |
 | `MAX_UPLOAD_MB` | `4096` | Tamaño máximo permitido por archivo en subidas `PUT` (en MB). |
 | `WEBDAV_BUFFER_MB` | `32` | Tamaño máximo del búfer en RAM (MB) antes de hacer spool a disco (óptimo Duplicati). |
 | `TRUSTED_PROXIES` | *(vacío)* | Lista de IPs/CIDRs de proxies de confianza para evaluar `X-Forwarded-For` / `X-Real-IP`. |

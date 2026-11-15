@@ -83,7 +83,30 @@ func NewServer(client *sapi.Client, webdavServer *webdav.Server) *Server {
 }
 
 func NewServerWithAuth(client *sapi.Client, webdavServer *webdav.Server, authCfg config.AuthConfig) *Server {
-	tg := notifier.NewTelegramNotifier("", "")
+	// Cargar Telegram desde el arranque. Antes solo se configuraba al abrir el
+	// panel, así que tras reiniciar el contenedor las alertas de sesión
+	// caducada nunca llegaban.
+	var botToken, chatID string
+	if client != nil {
+		cfg := client.GetConfig()
+		botToken, chatID = cfg.TelegramBotToken, cfg.TelegramChatID
+	}
+	if strings.TrimSpace(botToken) == "" {
+		botToken = os.Getenv("TELEGRAM_BOT_TOKEN")
+	}
+	if strings.TrimSpace(chatID) == "" {
+		chatID = os.Getenv("TELEGRAM_CHAT_ID")
+	}
+	if !config.ValidateBotToken(botToken) || !config.ValidateChatID(chatID) {
+		logger.Log("[Telegram] ⚠️ Credenciales de Telegram con formato inválido; las alertas quedan desactivadas hasta corregirlas en el panel.")
+		botToken, chatID = "", ""
+	}
+	tg := notifier.NewTelegramNotifier(botToken, chatID)
+	if tg.IsConfigured() {
+		logger.Log("[Telegram] 🔔 Alertas de sesión activas (chat %s).", logger.Mask(chatID))
+	} else {
+		logger.Log("[Telegram] ℹ️ Alertas de Telegram no configuradas: no se avisará si la sesión caduca.")
+	}
 	s := &Server{
 		client:       client,
 		webdavServer: webdavServer,
@@ -99,6 +122,12 @@ func NewServerWithAuth(client *sapi.Client, webdavServer *webdav.Server, authCfg
 			if s.notifier != nil && s.notifier.IsConfigured() {
 				cfg := client.GetConfig()
 				_ = s.notifier.SendSessionExpiredAlert(cfg.Provider, cfg.Phone, err.Error())
+			}
+		}
+		client.OnSessionRecovered = func(downtime time.Duration) {
+			if s.notifier != nil && s.notifier.IsConfigured() {
+				cfg := client.GetConfig()
+				_ = s.notifier.SendSessionRecoveredAlert(cfg.Provider, cfg.Phone, downtime)
 			}
 		}
 	}
@@ -702,7 +731,7 @@ func (s *Server) handleStorageInfo(w http.ResponseWriter, r *http.Request) {
 	if s.client.IsSessionExpired() {
 		jsonResponse(w, http.StatusInternalServerError, map[string]interface{}{
 			"status":  "error",
-			"message": "Sesión expirada (HTTP 401): revincula tu cuenta en el panel web",
+			"message": "Sesión expirada: reintentando la recuperación automáticamente. Si persiste, revincula tu cuenta en el panel web",
 		})
 		return
 	}

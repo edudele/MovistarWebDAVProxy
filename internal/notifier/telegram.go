@@ -152,8 +152,29 @@ func (t *TelegramNotifier) SendSessionExpiredAlert(provider, phone, details stri
 			"El Proxy WebDAV no puede acceder a tus archivos porque la sesión para la línea *%s* ha expirado.\n\n"+
 			"Detalle: %s\n"+
 			"Hora: %s\n\n"+
-			"Por favor, abre el panel Web para revincular tu dispositivo.",
+			"El proxy intentará recuperar la sesión automáticamente y te avisará si lo consigue. "+
+			"Si no recibes ese aviso, abre el panel Web para revincular tu dispositivo.",
 		providerName, logger.Mask(phone), details, time.Now().Format("2006-01-02 15:04:05"),
+	)
+	return t.SendMessage(msg)
+}
+
+func (t *TelegramNotifier) SendSessionRecoveredAlert(provider, phone string, downtime time.Duration) error {
+	t.mu.Lock()
+	// Permitir que un nuevo incidente vuelva a notificarse de inmediato.
+	t.lastSessionExpiredAt = time.Time{}
+	t.mu.Unlock()
+
+	providerName := "Movistar Cloud"
+	if strings.EqualFold(provider, "o2") {
+		providerName = "O2 Cloud"
+	}
+	msg := fmt.Sprintf(
+		"✅ *Sesión de %s recuperada*\n\n"+
+			"El Proxy WebDAV ha recuperado automáticamente la sesión de la línea *%s* sin necesidad de revincular.\n\n"+
+			"Tiempo sin servicio: %s\n"+
+			"Hora: %s",
+		providerName, logger.Mask(phone), downtime.Round(time.Second), time.Now().Format("2006-01-02 15:04:05"),
 	)
 	return t.SendMessage(msg)
 }

@@ -27,11 +27,15 @@ func NewRingBuffer(capacity int) *RingBuffer {
 }
 
 func (r *RingBuffer) Append(format string, args ...interface{}) {
-	nowStr := time.Now().Format("15:04:05")
+	now := time.Now()
+	nowStr := now.Format("15:04:05")
 	msg := fmt.Sprintf(format, args...)
 	line := fmt.Sprintf("[%s] %s", nowStr, msg)
 
 	fmt.Fprintln(os.Stdout, line)
+	if r == DefaultLogger {
+		writeToSink(now, msg)
+	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -106,4 +110,3 @@ func isDigits(s string) bool {
 	}
 	return len(s) > 0
 }
-

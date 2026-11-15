@@ -114,11 +114,18 @@ func TestSaveAndLoadAccountConfig_RoundTripAndInjection(t *testing.T) {
 		t.Errorf("expected SaveAccountConfig to reject newline injection")
 	}
 
-	// 3. Intentar token de Telegram con comillas o salto de línea
+	// 3. Token de Telegram con comillas o salto de línea: se descarta ese
+	// campo, pero los tokens OAuth (rotados) deben guardarse igualmente.
 	badTg := cfg
+	badTg.RefreshToken = "ref-token-rotated"
 	badTg.TelegramBotToken = "12345:abc\"\nINJECTED=\"1"
-	if err := SaveAccountConfig(badTg); err == nil {
-		t.Errorf("expected SaveAccountConfig to reject invalid telegram bot token")
+	if err := SaveAccountConfig(badTg); err != nil {
+		t.Errorf("SaveAccountConfig must persist OAuth tokens even with an invalid telegram token: %v", err)
+	}
+	if got := LoadAccountConfig("611223344"); got.RefreshToken != "ref-token-rotated" {
+		t.Errorf("rotated refresh token not persisted: %q", got.RefreshToken)
+	} else if got.TelegramBotToken != "" && got.TelegramBotToken != "987654321:XYZ_abc-123" {
+		t.Errorf("invalid telegram token must not be stored, got %q", got.TelegramBotToken)
 	}
 
 	// Verificar que el fichero en disco no contiene la cadena inyectada

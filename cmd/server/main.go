@@ -27,9 +27,17 @@ func main() {
 		os.Exit(runHealthcheck())
 	}
 
+	logFileErr := setupPersistentLog()
+	defer logger.DisableFileSink()
+
 	logger.Log("=====================================================")
 	logger.Log("🚀 Movistar Cloud WebDAV Proxy %s (Nativo en Go)", AppVersion)
 	logger.Log("=====================================================")
+	if p := logger.FileSinkPath(); p != "" {
+		logger.Log("[Logs] 📝 Log persistente en %s (LOG_FILE)", p)
+	} else if logFileErr != nil {
+		logger.Log("[Logs] ⚠️ No se pudo activar el log persistente: %v", logFileErr)
+	}
 
 	davAuth := config.LoadWebDAVAuthConfig()
 	uiAuth := config.LoadWebUIAuthConfig()
@@ -191,6 +199,28 @@ func main() {
 	logger.Log("[System] ✔ Servidores cerrados correctamente. Hasta pronto.")
 }
 
+// setupPersistentLog replica los logs en un fichero rotado dentro del volumen
+// de tokens (único directorio escribible con read_only: true). LOG_FILE
+// permite cambiar la ruta o desactivarlo con "off".
+func setupPersistentLog() error {
+	path := strings.TrimSpace(os.Getenv("LOG_FILE"))
+	switch strings.ToLower(path) {
+	case "off", "false", "0", "no", "none", "-":
+		return nil
+	case "":
+		path = filepath.Join(config.TokensDir, "logs", "proxy.log")
+	}
+	maxMB := 5
+	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv("LOG_FILE_MAX_MB"))); err == nil && v > 0 {
+		maxMB = v
+	}
+	backups := 3
+	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv("LOG_FILE_BACKUPS"))); err == nil && v > 0 {
+		backups = v
+	}
+	return logger.EnableFileSink(path, int64(maxMB)<<20, backups)
+}
+
 func runHealthcheck() int {
 	webPort := "5000"
 	if p := strings.TrimSpace(os.Getenv("PORT")); p != "" {
@@ -225,8 +255,40 @@ func computeKeepAliveInterval(expiresInStr string, consecutiveFailures int) time
 	return 5 * time.Minute
 }
 
+// recoverySchedule define cada cuánto se intenta recuperar sola una sesión
+// marcada como expirada. Crece para no castigar a apiseg/SAPI si la
+// vinculación está realmente revocada.
+var recoverySchedule = []time.Duration{
+	5 * time.Minute,
+	15 * time.Minute,
+	30 * time.Minute,
+	1 * time.Hour,
+	2 * time.Hour,
+	4 * time.Hour,
+}
+
+func computeRecoveryInterval(attempt int) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+	if attempt < len(recoverySchedule) {
+		return recoverySchedule[attempt]
+	}
+	return 6 * time.Hour
+}
+
+func autoRecoveryEnabled() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("SESSION_AUTO_RECOVERY")))
+	return v != "false" && v != "0" && v != "off" && v != "no"
+}
+
 func runKeepAlive(ctx context.Context, client *sapi.Client, isRunning func() bool) {
 	consecutiveFailures := 0
+	recoveryAttempts := 0
+	autoRecover := autoRecoveryEnabled()
+	if !autoRecover {
+		logger.Log("[KeepAlive] ℹ️ Recuperación automática de sesión desactivada (SESSION_AUTO_RECOVERY=false).")
+	}
 	timer := time.NewTimer(5 * time.Minute)
 	defer timer.Stop()
 
@@ -245,9 +307,24 @@ func runKeepAlive(ctx context.Context, client *sapi.Client, isRunning func() boo
 				continue
 			}
 			if client.IsSessionExpired() {
-				timer.Reset(5 * time.Minute)
+				if !autoRecover {
+					timer.Reset(5 * time.Minute)
+					continue
+				}
+				logger.Log("[KeepAlive] 🩺 Sesión expirada: intento de recuperación automática #%d...", recoveryAttempts+1)
+				if client.TryRecoverSession() {
+					recoveryAttempts = 0
+					consecutiveFailures = 0
+					timer.Reset(computeKeepAliveInterval(client.GetConfig().ExpiresIn, 0))
+					continue
+				}
+				next := computeRecoveryInterval(recoveryAttempts + 1)
+				recoveryAttempts++
+				logger.Log("[KeepAlive] ⏸️ La sesión sigue expirada. Próximo intento automático en %v (o revincula desde el panel web).", next)
+				timer.Reset(next)
 				continue
 			}
+			recoveryAttempts = 0
 
 			space, err := client.GetStorageSpace()
 			if err == nil && space != nil {
@@ -260,6 +337,12 @@ func runKeepAlive(ctx context.Context, client *sapi.Client, isRunning func() boo
 				}
 				if client.IsSessionExpired() {
 					consecutiveFailures = 0
+					if autoRecover {
+						first := computeRecoveryInterval(0)
+						logger.Log("[KeepAlive] ⏸️ Sesión expirada. Primer intento de recuperación automática en %v.", first)
+						timer.Reset(first)
+						continue
+					}
 					logger.Log("[KeepAlive] ⏸️ Sesión expirada pendiente de revinculación en el panel web. Pausando comprobaciones periódicas.")
 				} else if strings.Contains(errStr, "401") || strings.Contains(errStr, "sesión expirada") || strings.Contains(errStr, "no autorizada") {
 					// GetStorageSpace -> DoRequest ya ejecutó RefreshSession() internamente al recibir 401.

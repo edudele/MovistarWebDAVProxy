@@ -83,8 +83,10 @@ func TestUploadTransportDisablesKeepAlives(t *testing.T) {
 }
 
 func TestIsTerminalRefreshError(t *testing.T) {
-	if !isTerminalRefreshError(errors.New("OAuth token refresh failed (HTTP 401)")) {
-		t.Fatal("401 refresh error must be terminal")
+	// RFC 6749 §5.2: un grant revocado/caducado es invalid_grant (HTTP 400);
+	// un 401 genérico no implica que la vinculación esté perdida.
+	if isTerminalRefreshError(errors.New("OAuth token refresh failed (HTTP 401)")) {
+		t.Fatal("a bare 401 refresh error must not be terminal")
 	}
 	if !isTerminalRefreshError(errors.New("invalid_grant")) {
 		t.Fatal("invalid_grant must be terminal")
