@@ -19,17 +19,26 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 
+	"movistar-webdav-proxy/internal/auth"
 	"movistar-webdav-proxy/internal/logger"
 )
 
-// PortalURL es el origen de la web de Movistar Cloud; las llamadas a SAPI se
-// ejecutan desde una pestaña abierta en él, igual que las hace la propia web.
-const PortalURL = "https://micloud.movistar.es"
+// PortalURL es el origen de la web de Movistar Cloud (o de O2 Cloud, ver
+// SetProvider); las llamadas a SAPI se ejecutan desde una pestaña abierta en él,
+// igual que las hace la propia web. Se fija una sola vez al arrancar, antes de
+// crear la sesión.
+var PortalURL = "https://micloud.movistar.es"
+
+// SetProvider elige la web a la que se conecta el modo web: "movistar" (por
+// defecto) o "o2". Debe llamarse antes de NewSession.
+func SetProvider(provider string) {
+	PortalURL = strings.TrimSuffix(auth.GetSAPIBaseURL(provider), "/sapi")
+}
 
 // sapiJS replica cómo la web llama a SAPI: cookies de sesión, validationkey en
 // la URL y cabecera X-deviceid "web-<huella>". El cuerpo viaja como texto.
 const sapiJS = `window.__sapi = async (method, path, body, ctype, deviceId) => {
-  const m = document.cookie.match(/validationKey=([^;]+)/);
+  const m = document.cookie.match(/validationKey=([^;]+)/i);
   const vk = m ? decodeURIComponent(m[1]) : '';
   const sep = path.includes('?') ? '&' : '?';
   const opts = {method, credentials: 'include', headers: {'Accept': 'application/json', 'X-deviceid': 'web-' + deviceId}};
@@ -250,7 +259,7 @@ func (s *Session) Credentials(uploadURL string) (cookieHeader, validationKey str
 			continue
 		}
 		parts = append(parts, c.Name+"="+c.Value)
-		if c.Name == "validationKey" {
+		if strings.EqualFold(c.Name, "validationKey") {
 			validationKey, _ = url.QueryUnescape(c.Value)
 		}
 	}

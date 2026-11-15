@@ -21,6 +21,7 @@ services:
       - no-new-privileges:true
     environment:
       - TZ=${TZ:-Europe/Madrid}
+      - WEB_PROVIDER=${WEB_PROVIDER:-movistar}   # movistar | o2
       - WEBDAV_USER=${WEBDAV_USER:-}
       - WEBDAV_PASSWORD=${WEBDAV_PASSWORD:-}
       - WEBUI_USER=${WEBUI_USER:-}

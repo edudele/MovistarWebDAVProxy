@@ -68,6 +68,25 @@ func sessionCookies(tab context.Context) (expires time.Time, remember bool, err 
 	return expires, remember, nil
 }
 
+// deleteSessionCookie borra JSESSIONID con el dominio y la ruta con que la guardó
+// el navegador. No se fija un dominio a mano porque difiere entre Movistar
+// (".micloud.movistar.es") y O2, y borrarla con otro dominio no hace nada.
+func deleteSessionCookie(tab context.Context) error {
+	res, err := chromedp.Call(tab, network.GetCookies, network.GetCookiesParams{URLs: []string{PortalURL + "/"}})
+	if err != nil {
+		return err
+	}
+	for _, c := range res.Cookies {
+		if c.Name != sessionCookie {
+			continue
+		}
+		if _, err := chromedp.Call(tab, network.DeleteCookies, network.DeleteCookiesParams{Name: c.Name, Domain: c.Domain, Path: c.Path}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Session) refreshCookieState() (expires time.Time, remember bool, err error) {
 	tab, err := s.tab()
 	if err != nil {
@@ -131,7 +150,7 @@ func (s *Session) Renew(ctx context.Context) error {
 		return errNoRemember
 	}
 	logger.Log("[WebSession] 🔄 Renovando la sesión web (caduca %s)...", old.Local().Format("02/01 15:04"))
-	if _, err := chromedp.Call(tab, network.DeleteCookies, network.DeleteCookiesParams{Name: sessionCookie, Domain: ".micloud.movistar.es", Path: "/"}); err != nil {
+	if err := deleteSessionCookie(tab); err != nil {
 		return fmt.Errorf("borrar %s: %w", sessionCookie, err)
 	}
 	if err := chromedp.Do(tab, chromedp.Navigate(PortalURL+"/")); err != nil {

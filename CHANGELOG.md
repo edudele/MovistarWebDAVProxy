@@ -7,6 +7,11 @@ Todos los cambios notables en **Movistar / O2 Cloud WebDAV Proxy** se documentan
 ### 🖥️ Panel sin dependencias externas
 - El CSS de Tailwind va compilado y embebido en el binario (`internal/webui/assets/tailwind.min.css`, inyectado inline); se elimina la carga desde `cdn.tailwindcss.com` y Google Fonts. Si el navegador no alcanzaba esos dominios, el panel se veía sin estilos y era inutilizable en el móvil. CSP del panel sin orígenes externos.
 
+### 🌐 Modo web con O2 Cloud (experimental)
+- `WEB_PROVIDER=o2` hace que el modo web use `cloud.o2online.es`. `PortalURL` deja de ser constante; la renovación borra `JSESSIONID` con el dominio real de la cookie y `validationKey` se reconoce sin distinguir mayúsculas.
+- Imagen del modo web publicada en `ghcr.io/edudele/movistar-webdav-proxy-web` (`docker-compose.web.ghcr.yml`).
+- Motivo: el inicio de sesión del cliente de escritorio (OAuth) recibe un 401 vacío de CloudFront con tokens recién emitidos, mientras la web oficial funciona.
+
 ### 🔍 Diagnóstico de los 401 de SAPI
 - Al renovar la sesión, el log registra estado, `Server`, `WWW-Authenticate`, cookies, si hubo rotación de tokens y un resumen del cuerpo sin tokens (login con el token actual, login tras refresco y sonda de la API).
 - El redactor de tokens ahora también limpia cuerpos JSON (`"access_token":"…"`).

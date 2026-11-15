@@ -65,6 +65,13 @@ func main() {
 	cfg := config.LoadAccountConfig("")
 	if config.WebSessionEnabled() {
 		// El modo de autenticación se anuncia al iniciar la sesión web.
+		// En modo web no hay vinculación OAuth que indique el proveedor:
+		// WEB_PROVIDER=o2 usa la web de O2 Cloud (por defecto, Movistar Cloud).
+		if p := strings.ToLower(strings.TrimSpace(os.Getenv("WEB_PROVIDER"))); p == "o2" || p == "movistar" {
+			cfg.Provider = p
+		}
+		webclient.SetProvider(cfg.Provider)
+		logger.Log("[WebSession] 🌐 Proveedor: %s (%s)", cfg.Provider, webclient.PortalURL)
 	} else if cfg.DeviceID != "" {
 		logger.Log("[WebDAV] 💻 Modo Autenticación: CLIENTE OFICIAL WINDOWS (%s)", logger.Mask(cfg.DeviceID))
 	} else if cfg.RefreshToken != "" {

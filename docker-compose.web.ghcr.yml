@@ -1,0 +1,44 @@
+# Modo web (Chromium sin pantalla) con la imagen publicada del fork, sin compilar:
+#   ghcr.io/edudele/movistar-webdav-proxy-web
+#
+#   docker compose -f docker-compose.web.ghcr.yml up -d
+#
+# Después abre el panel (WEB_PORT, 5002 por defecto) y pulsa "Abrir inicio de sesión".
+# Entra con e-mail y contraseña y marca "No cerrar sesión" para que se renueve sola.
+#
+# WEB_PROVIDER=o2 para O2 Cloud (cloud.o2online.es); movistar (por defecto) para
+# Movistar Cloud (micloud.movistar.es). Ver docs/web-mode.md.
+#
+# Usa volumen, puertos y nombre propios: puede convivir con el contenedor normal.
+services:
+  movistar-webdav-proxy-web:
+    image: ghcr.io/edudele/movistar-webdav-proxy-web:${WEB_IMAGE_TAG:-latest}
+    container_name: movistar-webdav-proxy-web
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    shm_size: 256m          # Chromium usa /dev/shm
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - TZ=${TZ:-Europe/Madrid}
+      - WEB_PROVIDER=${WEB_PROVIDER:-movistar}
+      - WEBDAV_USER=${WEBDAV_USER:-}
+      - WEBDAV_PASSWORD=${WEBDAV_PASSWORD:-}
+      - WEBUI_USER=${WEBUI_USER:-}
+      - WEBUI_PASSWORD=${WEBUI_PASSWORD:-}
+      - WEBDAV_HOST_PORT=${WEBDAV_PORT:-5052}
+      # Opcional (valores por defecto entre paréntesis):
+      # - WEB_SESSION_RENEW_BEFORE=1h     # Renueva la sesión de 24 h este margen antes
+      # - TELEGRAM_BOT_TOKEN=
+      # - TELEGRAM_CHAT_ID=
+    ports:
+      - "${BIND_IP:-0.0.0.0}:${WEB_PORT:-5002}:5000"
+      - "${BIND_IP:-0.0.0.0}:${WEBDAV_PORT:-5052}:8080"
+    volumes:
+      - movistar_tokens_web:/app/tokens   # incluye el perfil de Chromium (la sesión)
+
+volumes:
+  movistar_tokens_web:
+    name: movistar_webdav_tokens_web

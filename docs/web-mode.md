@@ -5,8 +5,11 @@ En el modo web el proxy no usa el inicio de sesión del cliente de escritorio
 (`micloud.movistar.es`): un Chromium sin pantalla dentro del contenedor guarda la
 sesión y las llamadas a SAPI se hacen desde esa pestaña, igual que la web.
 
-Por ahora es **solo para Movistar Cloud** (`micloud.movistar.es`); no está probado
-con O2 Cloud.
+Está pensado para **Movistar Cloud** (`micloud.movistar.es`). Con `WEB_PROVIDER=o2`
+se conecta a la web de **O2 Cloud** (`cloud.o2online.es`): es **experimental** en este
+fork, porque el modo web se desarrolló y probó solo con Movistar Cloud y la web de O2
+puede diferir en cookies o rutas. El dominio de la cookie de sesión se toma del que
+guarda el navegador, y el nombre de `validationKey` se compara sin distinguir mayúsculas.
 
 Úsalo si el emparejamiento por SMS del cliente de escritorio falla o CloudFront lo
 bloquea (`403`), o si prefieres que el tráfico sea idéntico al de la web. El modo
@@ -85,6 +88,7 @@ papelera.
 | Variable | Por defecto | Descripción |
 |---|---|---|
 | `WEB_SESSION` | `false` (`true` en `Dockerfile.web`) | Activa el modo web. |
+| `WEB_PROVIDER` | `movistar` | `movistar` o `o2`: a qué web se conecta el modo web. |
 | `CHROME_PATH` | autodetectar (`/usr/bin/chromium` en la imagen) | Ejecutable de Chromium/Chrome. |
 | `CHROME_NO_SANDBOX` | `false` (`true` en la imagen) | Lanza Chromium sin sandbox (necesario como root en contenedores). |
 | `WEB_SESSION_RENEW_BEFORE` | `1h` | Margen antes de la caducidad de 24 h para renovar la sesión. |
