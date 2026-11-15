@@ -11,6 +11,7 @@ Todos los cambios notables en **Movistar / O2 Cloud WebDAV Proxy** se documentan
 - `WEB_PROVIDER=o2` hace que el modo web use `cloud.o2online.es`. `PortalURL` deja de ser constante; la renovación borra `JSESSIONID` con el dominio real de la cookie y `validationKey` se reconoce sin distinguir mayúsculas.
 - Imagen del modo web publicada en `ghcr.io/edudele/movistar-webdav-proxy-web` (`docker-compose.web.ghcr.yml`).
 - Motivo: el inicio de sesión del cliente de escritorio (OAuth) recibe un 401 vacío de CloudFront con tokens recién emitidos, mientras la web oficial funciona.
+- **El Chromium del modo web ya no se anuncia como `HeadlessChrome`.** Con ese `User-Agent` la web de O2 Cloud no redirigía al login y se quedaba en el spinner de carga (reproducido: con el `User-Agent` natural permanecía en `/`, con uno de Chromium normal pasaba a `/login`). Se sustituye `HeadlessChrome` por `Chrome` vía CDP (`Emulation.setUserAgentOverride`, con metadatos de pistas de cliente coherentes, sin la marca de headless) antes de abrir la web; el resto del `User-Agent` no se toca.
 
 ### 🔍 Diagnóstico de los 401 de SAPI
 - Al renovar la sesión, el log registra estado, `Server`, `WWW-Authenticate`, cookies, si hubo rotación de tokens y un resumen del cuerpo sin tokens (login con el token actual, login tras refresco y sonda de la API).

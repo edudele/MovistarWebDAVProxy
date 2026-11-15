@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 
@@ -153,12 +154,26 @@ func (s *Session) start() error {
 
 	actx, acancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	ctx, cancel := chromedp.NewContext(actx)
-	if err := chromedp.Do(ctx, chromedp.Navigate(PortalURL+"/")); err != nil {
+	// Se arranca en una pestaña en blanco para leer el User-Agent real y quitarle el
+	// marcador de headless antes de abrir la web (ver useragent.go).
+	if err := chromedp.Do(ctx, chromedp.Navigate("about:blank")); err != nil {
 		cancel()
 		acancel()
 		return fmt.Errorf("arrancar Chromium: %w", err)
 	}
 	ua, _ := chromedp.Run(ctx, chromedp.Evaluate[string]("navigator.userAgent"))
+	if params, ok := userAgentOverride(ua); ok {
+		if _, err := chromedp.Call(ctx, emulation.SetUserAgentOverride, params); err != nil {
+			logger.Log("[WebSession] ⚠️ No se pudo quitar «Headless» del User-Agent: %v", err)
+		} else {
+			ua = params.UserAgent
+		}
+	}
+	if err := chromedp.Do(ctx, chromedp.Navigate(PortalURL+"/")); err != nil {
+		cancel()
+		acancel()
+		return fmt.Errorf("abrir la web: %w", err)
+	}
 
 	s.mu.Lock()
 	s.allocCancel, s.ctx, s.cancel, s.userAgent = acancel, ctx, cancel, ua
