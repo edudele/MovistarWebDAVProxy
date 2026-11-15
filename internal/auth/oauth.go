@@ -279,7 +279,9 @@ type SAPILoginSessionCookies struct {
 	Names         []string
 }
 
-var sensitiveLoginBodyRegex = regexp.MustCompile(`(?i)(accesstoken|access_token|refreshtoken|refresh_token|validationkey|jsessionid)([=:]\s*["']?)[^&"'\s<]+`)
+// Cubre tanto pares clave=valor como JSON, donde la clave va entre comillas
+// (`"access_token":"…"`): el separador admite una comilla de cierre de la clave.
+var sensitiveLoginBodyRegex = regexp.MustCompile(`(?i)(accesstoken|access_token|refreshtoken|refresh_token|validationkey|jsessionid)(["']?\s*[=:]\s*["']?)[^&"'\s<,}]+`)
 
 func summarizeSAPILoginBody(body []byte, secrets ...string) string {
 	preview := strings.ToValidUTF8(string(body), "?")
