@@ -76,6 +76,10 @@ func fakeSaveMetadata(t *testing.T, validating int, okKinds ...string) (*Client,
 	var mu sync.Mutex
 	var calls []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/sapi/upload/") {
+			http.NotFound(w, r)
+			return
+		}
 		kind := strings.TrimPrefix(r.URL.Path, "/sapi/upload/")
 		mu.Lock()
 		calls = append(calls, kind)
@@ -162,5 +166,23 @@ func TestUpdateMedia_ErrorInBodyIsReported(t *testing.T) {
 	c, _ := fakeSaveMetadata(t, 0)
 	if err := c.UpdateMedia("1", "01 Canción.m4a", "01 Canción.m4a", 200); err == nil {
 		t.Fatal("esperado error cuando SAPI responde con error en el cuerpo; se dio por bueno")
+	}
+}
+
+// La espera ante MED-1017 crece con cada intento y se limita a mediaMoveMaxDelay.
+func TestMediaMoveDelay_GrowsAndCaps(t *testing.T) {
+	var total time.Duration
+	for i := 0; i < mediaMoveRetries; i++ {
+		d := mediaMoveDelay(i)
+		if i > 0 && d < mediaMoveDelay(i-1) {
+			t.Errorf("intento %d: %v menor que el anterior", i, d)
+		}
+		if d > mediaMoveMaxDelay {
+			t.Errorf("intento %d: %v supera el máximo %v", i, d, mediaMoveMaxDelay)
+		}
+		total += d
+	}
+	if total < 60*time.Second {
+		t.Errorf("espera total %v: debería cubrir al menos 60 s de validación", total)
 	}
 }

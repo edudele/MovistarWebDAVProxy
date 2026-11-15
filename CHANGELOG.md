@@ -2,24 +2,92 @@
 
 Todos los cambios notables en **Movistar / O2 Cloud WebDAV Proxy** se documentan en este archivo.
 
-## [v2.4.5] - 2026-11-15
+## [Fork edudele] - 2026-11-15 (sobre upstream v2.5.2)
 
-### 🔐 La vinculación con Movistar / O2 ya no se pierde por un único 401
+### 🖥️ Panel sin dependencias externas
+- El CSS de Tailwind va compilado y embebido en el binario (`internal/webui/assets/tailwind.min.css`, inyectado inline); se elimina la carga desde `cdn.tailwindcss.com` y Google Fonts. Si el navegador no alcanzaba esos dominios, el panel se veía sin estilos y era inutilizable en el móvil. CSP del panel sin orígenes externos.
+
+### 🔍 Diagnóstico de los 401 de SAPI
+- Al renovar la sesión, el log registra estado, `Server`, `WWW-Authenticate`, cookies, si hubo rotación de tokens y un resumen del cuerpo sin tokens (login con el token actual, login tras refresco y sonda de la API).
+- El redactor de tokens ahora también limpia cuerpos JSON (`"access_token":"…"`).
+
+### 🔐 Recuperación de sesión (aportes previos del fork, anteriores a la integración)
+
+#### 🔐 La vinculación con Movistar / O2 ya no se pierde por un único 401
 - **Síntoma (O2):** `OAuth token refresh failed (HTTP 401)` al primer intento → `Pausando reintentos automáticos hasta revinculación`, aunque un segundo después SAPI seguía entregando credenciales rotadas. La sesión quedaba bloqueada hasta repetir el SMS.
 - **Clasificación de errores según RFC 6749 §5.2:** el canje de `refresh_token` lee el campo `error` de la respuesta. Solo `invalid_grant` se considera revocación; un 401 genérico (`invalid_client`, gateway) ya no es terminal y no se reintenta en bucle.
 - **Comprobación real antes de rendirse:** si apiseg rechaza el `refresh_token`, o si `/sapi/login/oauth` devuelve 401 tras un canje correcto, se verifica la sesión con una petición SAPI real (cuota). Si funciona, se conserva la vinculación. La vinculación inicial ya no usa `/sapi/login/oauth`, así que no se descartan tokens recién emitidos por culpa de ese endpoint.
 - **Recuperación automática:** una sesión marcada como expirada ya no queda bloqueada para siempre. KeepAlive reintenta recuperarla (recargando también los tokens de disco) a los 5 min, 15 min, 30 min, 1 h, 2 h, 4 h y después cada 6 h. Cualquier respuesta 2xx de SAPI la reactiva. Desactivable con `SESSION_AUTO_RECOVERY=false`.
 
-### 🔁 Rotación de tokens (RFC 6749 §6) sin pérdidas
+#### 🔁 Rotación de tokens (RFC 6749 §6) sin pérdidas
 - Los tokens rotados que llegan en la cabecera `Authorization` de una respuesta **de error** de `/sapi/login/oauth` se guardan y se usan en el canje, en lugar de descartarse.
 - El canje relee el `refresh_token` más reciente en cada intento.
 - Los reintentos por 429/503/408 presentan las credenciales vigentes y no las de la petición original.
 - Los errores al guardar credenciales ya no se ignoran: se registran y se reintenta. El fichero se escribe con `fsync` antes del `rename`.
 - Un token o Chat ID de Telegram con formato inválido ya no impide guardar los tokens OAuth (solo se descarta ese campo).
 
-### 🔔 Alertas y diagnóstico
+#### 🔔 Alertas y diagnóstico
 - **Telegram activo desde el arranque:** antes las credenciales solo se cargaban al abrir el panel, así que tras reiniciar el contenedor nunca llegaba la alerta de sesión caducada. Se envía una única alerta por incidente y un aviso nuevo de **sesión recuperada**.
 - **Log persistente con rotación** en `/app/tokens/logs/proxy.log` (`LOG_FILE`, `LOG_FILE_MAX_MB`, `LOG_FILE_BACKUPS`), con fecha completa, para conservar el historial aunque se recree el contenedor.
+
+## [v2.5.2] - 2026-11-15
+
+### 🔄 Paridad entre modo normal (OAuth) y modo web (`#41`)
+- **Descargas de archivos recién subidos o con URL caducada (`#41`):** unificados `downloadRange` y `OpenFile` (`waitForDownloadURL`) para ambos modos. Las lecturas inmediatas tras `PUT` esperan a que SAPI indexe la URL (respetando el backoff ante errores) y las respuestas con cuerpo vacío o rango ignorado renuevan la URL vía `GetMediaByID` en lugar de devolver `503`.
+- **Copia en la nube (`COPY`):** `tryServerCopy` (`/media/file?action=copy`) habilitado también en modo normal, con fallback automático a descarga y re-subida si el archivo aún se está indexando (`MED-1032`) o el servidor lo rechaza.
+- **Validación al mover (`MOVE`):** ante `MED-1017`, `UpdateMedia`/`MoveFile` sondea `get-validation-status` también en modo normal antes de reintentar.
+- **Borrados unificados (`DELETE`):** `DeleteFolder` y `DeleteFile` intentan primero los endpoints modernos (`softdelete` / `/media/<tipo>?action=delete&softdelete=true`) en ambos modos y hacen fallback a los legacy si el servidor los rechaza.
+- **Límites de transferencia por defecto:** `TransferLimits` pasa a **4 descargas / 2 subidas** por defecto para ambos modos (`WEBDAV_MAX_DOWNLOADS`, `WEBDAV_MAX_UPLOADS`).
+
+### 🛠️ Correcciones
+- **Subidas (`UploadFileToFolder`):** reintentos ante errores transitorios `HTTP >= 500`, `MED-1048` y `PAPI-0000`.
+- **Hyper Backup (`@writer` `.cinfo`):** `isEphemeralEmptyFile` solo purga bloqueos y `@reader`, conservando los archivos de estado `.cinfo` dentro de `@writer`.
+- **Transferencias WebDAV (`transferWriter.WriteHeader`):** propagación limpia de cabeceras en respuestas en streaming.
+
+## [v2.5.1] - 2026-11-15
+
+### 🛡️ Resiliencia ante WAF (403) y Subidas Masivas/Grandes (`#26`, PR `#44`)
+- **Circuit breaker por servidor (`waf_breaker.go`):** al primer `403` de CloudFront, el proxy pausa las llamadas a ese servidor durante 10 min (duplicando el tiempo hasta 2 h si persiste) y responde `503 + Retry-After` a las escrituras que lo necesitan, evitando ráfagas de reintentos que alargan el bloqueo. Los servidores de API (`sapi`) y de subidas (`upload.*`) tienen frenos independientes para que un bloqueo en la API no detenga las subidas.
+- **0 llamadas previas a la API en subidas nuevas:** cuando SQLite ya completó su sincronización inicial, la comprobación previa al `PUT` y en `MKCOL` se resuelve en local (ahorrando 2 llamadas por archivo), y la URL de descarga se consulta solo en la primera lectura (`resolveURL`) en lugar de en cada `PROPFIND` tras el `PUT`.
+- **Renovación de sesión en subidas (`401`):** si una subida en streaming recibe `401`, renueva la sesión aunque el breaker de la API esté en pausa.
+- **Timeout de respuesta en subidas grandes (`UPLOAD_RESPONSE_TIMEOUT_SEC`):** ampliado a **300 s (5 min)** por defecto para evitar cortes a los 60 s cuando Movistar/O2 tarda en confirmar archivos de cientos de MB.
+- **`DeleteFile`:** deja de reintentar `403` si el breaker del WAF ya está activo.
+
+## [v2.5.0] - 2026-11-15
+
+### 🌐 Modo web opcional (`WEB_SESSION=true`, imagen `Dockerfile.web`)
+
+- **Qué es:** alternativa al inicio de sesión del cliente de escritorio. Un Chromium sin pantalla guarda la sesión de la web oficial (`micloud.movistar.es`) y las llamadas a SAPI se hacen desde esa pestaña, con sus cookies, `validationkey` y `X-deviceid: web-…`. Las subidas van directas a `upload.*` con las cookies de la sesión y las descargas por la URL firmada (con `Range`).
+- **Por qué:** cuando CloudFront bloquea el cliente OAuth `omh windows client` (403) o el emparejamiento por SMS no funciona, la web sigue funcionando. Imagen y `docker-compose.web.yml` aparte: el modo normal y su imagen de ~20 MB no cambian.
+- **Inicio de sesión desde el panel:** `/web-login/` muestra la pestaña del Chromium (captura, ratón y teclado) para entrar como en la web. Tarjeta **Sesión web** en el panel.
+- **Renovación automática:** la sesión (`JSESSIONID`) caduca a las 24 h aunque haya actividad. Con «No cerrar sesión» Movistar deja una cookie `PLC` (~90 días) con la que la web reentra sola; el proxy renueva la sesión una hora antes (`WEB_SESSION_RENEW_BEFORE`) con las demás llamadas en espera, porque la `PLC` rota en cada uso y el uso simultáneo la anula.
+- **Como la web:** `acceptasynchronous=true` solo en subidas de más de 200 MiB (`minAsyncUploadFileSizeBytes`); ante `MED-1017` se consulta `get-validation-status`; borrados con `/media/<tipo>?action=delete&softdelete=true` y `/media/folder?action=softdelete` con su cuerpo JSON (y la llamada genérica si se rechazan); `COPY` de WebDAV con la copia en la nube (`/media/file?action=copy`); 2 subidas y 4 descargas simultáneas (`WEBDAV_MAX_UPLOADS`, `WEBDAV_MAX_DOWNLOADS`).
+- **URLs firmadas caducadas:** una lectura por rangos con la URL caducada (403, rango ignorado o cuerpo vacío) pide otra URL y reintenta; antes una lectura larga se colgaba tras unas horas.
+- **Papelera:** vaciado periódico opcional (`WEB_TRASH_EMPTY_EVERY`, desactivado por defecto).
+- **Opciones de la cuenta:** el panel muestra lo que la web lee de `/system/information` (tamaño máximo, límites `FOL-1036`, caducidad de la papelera).
+
+### ⇅ Transferencias en el panel
+
+- Tarjeta con las subidas a la nube y las descargas servidas en curso: nombre, porcentaje, velocidad y tiempo restante. Las lecturas por rangos de un mismo archivo se agrupan y, al terminar, siguen visibles 5 min como «en búfer» (un cliente que lee por rangos puede pasar minutos sin pedir datos).
+
+### 📦 Documentación: configuración recomendada de rclone
+
+- Sección nueva en el `README` con la configuración de `rclone` probada para archivos de más de 4 GB (`chunker` con `name_format = *-chunk###` y `transactions = norename`, sin renombrados ni `423 Locked`) y cifrado opcional con `crypt`, con las notas sobre comentarios en `rclone.conf`, remotos nuevos y la longitud de los nombres.
+
+### 🛠️ Correcciones
+
+- **Nombres de más de 255 caracteres:** SAPI no los rechaza: los guarda recortados a 255 y responde como si todo fuera bien. Con nombres cifrados (rclone `crypt`) el recortado ya no se puede descifrar y el archivo queda invisible, aunque el cliente lo dio por copiado. `PUT`, `MKCOL` y el destino de `MOVE`/`COPY` con un nombre de más de 255 caracteres reciben ahora `400` y el cliente informa del error.
+- **`SQLITE_BUSY` con escrituras concurrentes:** los `PRAGMA` (`busy_timeout`, `journal_mode=WAL`, `synchronous`) se aplicaban solo a una conexión del pool; ahora van en el DSN y valen para todas. Test que reproducía el fallo.
+- **`423 Locked` en peticiones simultáneas sobre la misma ruta** (p. ej. varios `MKCOL` de rclone): `x/net/webdav` pone un bloqueo implícito por petición; el sistema de bloqueos espera hasta 10 s a que se libere un bloqueo implícito en vez de fallar al instante.
+- **`MED-1017` al mover un archivo recién subido:** hasta ~70 s de espera creciente (antes ~10 s, insuficiente para algunos archivos).
+- **`UpdateFolder`** ya no da por buena una respuesta HTTP 200 con un error en el cuerpo; `FOL-1036` (límite de elementos al mover o borrar una carpeta) devuelve un error propio.
+- **Registro:** los «no existe» de `PROPFIND`/`HEAD`/`GET` (comprobaciones normales de rclone y Duplicati antes de subir) ya no se registran como errores.
+- **Panel:** modo oscuro (sigue al sistema o se elige con el botón).
+
+## [v2.4.5] - 2026-11-15
+
+### 🛠️ Caché y Sincronización de Metadatos (`#28`, PR `#42`)
+- **Reanudación de sincronización inicial cortada:** si la sincronización inicial se interrumpe a mitad (por ejemplo por un `403` en un lote de `GetMediaByIDs`) dejando elementos en SQLite sin `last_sync_cursor`, el siguiente ciclo ya no salta el cursor a «ahora» ni da la caché por completa; vuelve a consultar desde `from=0` y descarga únicamente los IDs de carpetas y archivos que aún faltan en la base local (`filterMissing`).
 
 ## [v2.4.4] - 2026-11-14
 

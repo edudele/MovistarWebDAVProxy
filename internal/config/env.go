@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version          = "v2.4.5"
+	Version          = "v2.5.2"
 	encryptedPrefix  = "enc:v1:"
 	tokensEncryptEnv = "TOKENS_ENCRYPTION_KEY"
 )
@@ -61,6 +61,25 @@ type AccountConfig struct {
 	TokenPath        string `json:"token_path"`
 	TelegramBotToken string `json:"telegram_bot_token"`
 	TelegramChatID   string `json:"telegram_chat_id"`
+}
+
+// WebSessionEnabled indica si se usa el modo web (WEB_SESSION=true): acceso a
+// Movistar Cloud con una sesión de la web oficial en un Chromium sin pantalla.
+func WebSessionEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("WEB_SESSION")), "true")
+}
+
+// TransferLimits devuelve las descargas y subidas simultáneas (WEBDAV_MAX_DOWNLOADS,
+// WEBDAV_MAX_UPLOADS). Por defecto 4 descargas y 2 subidas para ambos modos (la web sube de 2 en 2).
+func TransferLimits(webMode bool) (downloads, uploads int) {
+	downloads, uploads = 4, 2
+	if n, err := strconv.Atoi(strings.TrimSpace(os.Getenv("WEBDAV_MAX_DOWNLOADS"))); err == nil && n > 0 {
+		downloads = n
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(os.Getenv("WEBDAV_MAX_UPLOADS"))); err == nil && n > 0 {
+		uploads = n
+	}
+	return downloads, uploads
 }
 
 // GetSyncInterval returns the metadata delta sync interval configured via SYNC_INTERVAL_SEC.
