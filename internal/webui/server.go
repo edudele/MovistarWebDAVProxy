@@ -35,6 +35,12 @@ var indexHTML []byte
 //go:embed templates/login.html
 var loginHTML []byte
 
+// tailwindCSS es el CSS de Tailwind compilado en build (ver assets/). Se embebe
+// en el binario para que el panel no dependa de un CDN externo.
+//
+//go:embed assets/tailwind.min.css
+var tailwindCSS string
+
 var loginTmpl = template.Must(template.New("login").Parse(string(loginHTML)))
 
 const (
@@ -44,7 +50,7 @@ const (
 	sessionCookieName  = "mc_webui_session"
 	defaultSessionTTL  = 24 * time.Hour
 	rememberSessionTTL = 30 * 24 * time.Hour
-	panelCSP           = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
+	panelCSP           = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
 )
 
 type webSession struct {
@@ -57,6 +63,7 @@ type loginPageData struct {
 	Version  string
 	Error    string
 	Username string
+	Tailwind template.CSS
 }
 
 type Server struct {
@@ -350,6 +357,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	rendered := bytes.ReplaceAll(indexHTML, []byte("{{.Version}}"), []byte(config.Version))
+	rendered = bytes.ReplaceAll(rendered, []byte("/*TAILWIND_CSS*/"), []byte(tailwindCSS))
 	_, _ = w.Write(rendered)
 }
 
@@ -493,6 +501,7 @@ func (s *Server) renderLoginPage(w http.ResponseWriter, r *http.Request, errMsg,
 		Version:  config.Version,
 		Error:    errMsg,
 		Username: username,
+		Tailwind: template.CSS(tailwindCSS),
 	}
 	if err := loginTmpl.Execute(w, data); err != nil {
 		logger.Log("[WebUI] ❌ Error renderizando plantilla de login: %v", err)
