@@ -124,6 +124,9 @@ func (s *Session) watchLogin() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		s.CheckLogin(ctx)
 		cancel()
+		if !s.LoggedIn() {
+			s.tickRememberMe()
+		}
 	}
 }
 
@@ -352,7 +355,7 @@ func (s *Session) UserAgent() string {
 
 // LoginView devuelve la vista remota sobre la pestaña actual, para el panel.
 func (s *Session) LoginView() *LoginView {
-	return &LoginView{tab: s.tab, LoggedIn: s.LoggedIn}
+	return &LoginView{tab: s.tab, LoggedIn: s.LoggedIn, Reset: s.ResetLogin}
 }
 
 // Close cierra Chromium de forma ordenada para que vuelque las cookies a disco.

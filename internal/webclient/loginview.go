@@ -19,6 +19,7 @@ import (
 type LoginView struct {
 	tab      func() (context.Context, error) // pestaña chromedp actual
 	LoggedIn func() bool                     // opcional: estado de la sesión para mostrarlo en la página
+	Reset    func() error                    // opcional: descarta la sesión y vuelve a la pantalla de acceso
 	mu       sync.Mutex                      // serializa la entrada para no mezclar eventos
 }
 
@@ -34,7 +35,25 @@ func (v *LoginView) Handler(prefix string) http.Handler {
 	mux.HandleFunc(prefix+"screen.jpg", v.serveScreen)
 	mux.HandleFunc(prefix+"input", v.serveInput)
 	mux.HandleFunc(prefix+"status", v.serveStatus)
+	mux.HandleFunc(prefix+"reset", v.serveReset)
 	return mux
+}
+
+// serveReset descarta la sesión del navegador y vuelve a la pantalla de acceso.
+func (v *LoginView) serveReset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST", http.StatusMethodNotAllowed)
+		return
+	}
+	if v.Reset == nil {
+		http.Error(w, "no disponible", http.StatusNotImplemented)
+		return
+	}
+	if err := v.Reset(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (v *LoginView) serveScreen(w http.ResponseWriter, r *http.Request) {
@@ -159,11 +178,13 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 </style></head><body><main>
 <h1>Inicio de sesión en Movistar Cloud</h1>
 <p>Haz clic en la imagen para enfocar un campo, escribe abajo y pulsa Enviar. Estado: <span id="st">esperando…</span></p>
+<p>Para que la sesión se renueve sola hay que entrar con la casilla «recordarme» marcada; el servidor la marca automáticamente cuando aparece (compruébalo en la imagen).</p>
 <img id="screen" alt="Pantalla del navegador del servidor">
 <div class="bar">
 <input id="txt" placeholder="Texto para el campo enfocado (teléfono, código SMS…)" autocomplete="off">
 <button class="primary" id="send">Enviar texto</button>
 <button data-key="Backspace">⌫</button><button data-key="Tab">Tab</button><button data-key="Enter">Intro</button>
+<button id="reset" title="Descarta la sesión actual y vuelve a la pantalla de acceso">Cerrar sesión y volver a entrar</button>
 </div></main>
 <script>
 const img=document.getElementById('screen'),st=document.getElementById('st'),txt=document.getElementById('txt');
@@ -176,5 +197,6 @@ img.addEventListener('wheel',e=>{e.preventDefault();post({kind:'wheel',...pos(e)
 document.getElementById('send').onclick=()=>{if(txt.value){post({kind:'text',text:txt.value}).then(refresh);txt.value=''}};
 txt.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();document.getElementById('send').click()}});
 document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>post({kind:'key',key:b.dataset.key}).then(refresh));
+document.getElementById('reset').onclick=()=>{if(confirm('Se descartará la sesión actual y el servicio quedará sin acceso hasta que vuelvas a iniciar sesión. ¿Continuar?')){fetch('reset',{method:'POST'}).then(r=>{st.textContent=r.ok?'esperando…':'error al reiniciar';st.className='';refresh()})}};
 setInterval(()=>fetch('status').then(r=>r.json()).then(s=>{if(s.loggedIn){st.textContent='sesión iniciada ✔';st.className='ok'}}),3000);
 </script></body></html>`

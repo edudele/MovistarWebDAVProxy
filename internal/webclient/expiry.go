@@ -71,9 +71,9 @@ func (s *Session) reportExpiry(now, expires time.Time, remember bool) {
 
 	if changed {
 		if remember {
-			logger.Log("[WebSession] ℹ️ La sesión web caduca el %s; renovación automática ACTIVA (cookie «No cerrar sesión» presente).", expires.Local().Format("02/01 15:04"))
+			logger.Log("[WebSession] ℹ️ La sesión web caduca el %s; renovación automática ACTIVA (cookie de «recordarme» presente).", expires.Local().Format("02/01 15:04"))
 		} else {
-			logger.Log("[WebSession] ⚠️ La sesión web caduca el %s y NO se renovará sola (no hay cookie «No cerrar sesión»): habrá que iniciar sesión de nuevo desde el panel.", expires.Local().Format("02/01 15:04"))
+			logger.Log("[WebSession] ⚠️ La sesión web caduca el %s y NO se renovará sola (no hay cookie de «recordarme»): en el panel, /web-login/, pulsa «Cerrar sesión y volver a entrar» e inicia sesión con la casilla «recordarme» marcada.", expires.Local().Format("02/01 15:04"))
 		}
 	}
 	if warn {

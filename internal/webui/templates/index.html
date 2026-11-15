@@ -487,7 +487,7 @@
             document.getElementById('ws-expires').textContent = fmtTime(d.expires);
             document.getElementById('ws-renew').textContent = d.remember
                 ? (d.renewed_at ? 'sí · última ' + fmtTime(d.renewed_at) : 'sí')
-                : 'no (entra con e-mail y «No cerrar sesión»)';
+                : 'no (al iniciar sesión marca «recordarme» / «No cerrar sesión»)';
             const every = d.trash_empty_every && d.trash_empty_every !== '0s' ? 'se vacía cada ' + d.trash_empty_every.replace(/m0s$/, 'm').replace(/h0m$/, 'h') : 'vaciado automático desactivado';
             document.getElementById('ws-trash').textContent = every + (d.trash_emptied_at ? ' · última ' + fmtTime(d.trash_emptied_at) : '');
             const acc = d.account || {};

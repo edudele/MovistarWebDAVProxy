@@ -166,8 +166,9 @@ func (t *TelegramNotifier) SendSessionExpiringAlert(provider string, expires tim
 	if strings.EqualFold(provider, "o2") {
 		providerName = "O2 Cloud"
 	}
-	action := "No hay renovación automática: abre el panel Web, entra en la pantalla de inicio de sesión " +
-		"y vuelve a iniciar sesión antes de esa hora para que el servicio no se corte."
+	action := "No hay renovación automática: abre el panel Web, entra en la pantalla de inicio de sesión, " +
+		"pulsa «Cerrar sesión y volver a entrar» e inicia sesión de nuevo (con la casilla «recordarme» marcada) " +
+		"antes de esa hora para que el servicio no se corte."
 	if autoRenewal {
 		action = "La renovación automática estaba activa pero no ha conseguido una sesión nueva. " +
 			"Abre el panel Web y vuelve a iniciar sesión para evitar el corte."
