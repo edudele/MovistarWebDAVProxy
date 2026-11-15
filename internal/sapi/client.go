@@ -636,6 +636,15 @@ func applyAuthHeaders(req *http.Request, cfg config.AccountConfig) {
 	}
 }
 
+// logLoginDiagnostics registra el detalle de una respuesta de /sapi/login/oauth
+// que no ha sido un éxito. El cuerpo ya viene sin tokens (BodyPreview) y sirve
+// para distinguir un dispositivo rechazado, una caída del servicio o un error
+// de formato de las credenciales.
+func logLoginDiagnostics(stage string, res auth.SAPILoginResult) {
+	logger.Log("[OAuth] 🔍 %s: HTTP %d, server=%q, www-authenticate=%q, cookies=%v, tokens_rotados=%t, cuerpo=%q",
+		stage, res.StatusCode, res.Server, res.WWWAuthenticate, res.ResponseCookieNames, res.RefreshedOAuth != nil, res.BodyPreview)
+}
+
 // probeSession comprueba con una petición SAPI real (cuota) si las
 // credenciales actuales funcionan. No adquiere el semáforo: se usa desde
 // RefreshSession, que ya se ejecuta dentro de una petición en curso.
@@ -666,8 +675,12 @@ func (c *Client) probeSession() (int, error) {
 			return 0, err
 		}
 		rotated := c.processSAPIResponse(resp)
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			logger.Log("[OAuth] 🔍 Sonda API (get-storage-space): HTTP %d, server=%q, www-authenticate=%q, tokens_rotados=%t, cuerpo=%q",
+				resp.StatusCode, resp.Header.Get("Server"), resp.Header.Get("WWW-Authenticate"), rotated, auth.SummarizeSAPIBody(body))
+		}
 		if resp.StatusCode == http.StatusUnauthorized && rotated {
 			continue
 		}
@@ -761,6 +774,7 @@ func (c *Client) RefreshSession() bool {
 			logger.Log("[OAuth] ℹ️ /sapi/login/oauth no respondió (%v); se intentará el canje de refresh_token.", res.Error)
 		} else {
 			logger.Log("[OAuth] ℹ️ /sapi/login/oauth con el access_token actual devolvió HTTP %d; se intentará el canje de refresh_token.", res.StatusCode)
+			logLoginDiagnostics("Login con access_token actual", res)
 		}
 	}
 
@@ -825,6 +839,7 @@ func (c *Client) RefreshSession() bool {
 				logger.Log("[OAuth] ✔ Tokens renovados y sesión SAPI inicializada con éxito.")
 				return true
 			}
+			logLoginDiagnostics("Login tras refresco", res)
 
 			// La vinculación inicial ya no usa /sapi/login/oauth (el cliente de
 			// escritorio actual no lo referencia): antes de tirar unos tokens

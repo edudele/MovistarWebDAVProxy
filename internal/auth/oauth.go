@@ -297,6 +297,12 @@ func summarizeSAPILoginBody(body []byte, secrets ...string) string {
 	return preview
 }
 
+// SummarizeSAPIBody devuelve un resumen del cuerpo de una respuesta SAPI apto
+// para logs: sin tokens ni claves de sesión, en una línea y acotado.
+func SummarizeSAPIBody(body []byte, secrets ...string) string {
+	return summarizeSAPILoginBody(body, secrets...)
+}
+
 func mustRandRead(b []byte) {
 	if _, err := rand.Read(b); err != nil {
 		panic("crypto/rand.Read failed: " + err.Error())
